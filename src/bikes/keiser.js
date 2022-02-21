@@ -7,6 +7,7 @@ import {createDropoutFilter} from '../util/dropout-filter';
 export const KEISER_LOCALNAME = "M3";
 const KEISER_VALUE_MAGIC = Buffer.from([0x02, 0x01]); // identifies Keiser data message
 const KEISER_VALUE_IDX_POWER = 10; // 16-bit power (watts) data offset within packet
+const KEISER_VALUE_IDX_HR = 8; // 16-bit heart rate (bpm) data offset within packet
 const KEISER_VALUE_IDX_CADENCE = 6; // 16-bit cadence (1/10 rpm) data offset within packet
 const KEISER_VALUE_IDX_REALTIME = 4; // Indicates whether the data present is realtime (0, or 128 to 227)
 const KEISER_VALUE_IDX_VER_MAJOR = 2; // 8-bit Version Major data offset within packet
@@ -104,10 +105,13 @@ export class KeiserBikeClient extends EventEmitter {
            if (fixed.power !== payload.power) {
              debuglog(`*** replaced zero power with previous power ${fixed.power}`);
            }
+           if (fixed.hr !== payload.hr) {
+             debuglog(`*** replaced zero heart rate with previous heart rate ${fixed.hr}`);
+           }
            if (fixed.cadence !== payload.cadence) {
              debuglog(`*** replaced zero cadence with previous cadence ${fixed.cadence}`);
            }
-           debuglog('Found Keiser M3: ', data.advertisement.localName, ' Address: ', data.address, ' Data: ', data.advertisement.manufacturerData, 'Power: ', fixed.power, 'Cadence: ', fixed.cadence);
+           debuglog('Found Keiser M3: ', data.advertisement.localName, ' Address: ', data.address, ' Data: ', data.advertisement.manufacturerData, 'Power: ', fixed.power, 'Heart Rate', fixed.hr, 'Cadence: ', fixed.cadence);
            this.emit(type, fixed);
            this.statsTimeout.reset();
            this.bikeTimeout.reset();
@@ -124,7 +128,7 @@ export class KeiserBikeClient extends EventEmitter {
    * Set power & cadence to 0 when the bike dissapears
    */
   async onStatsTimeout() {
-    const reset = { power:0, cadence:0 };
+    const reset = { power:0, cadence:0, hr:0 };
     debuglog('Stats timeout exceeded');
     console.log("Stats timeout: Restarting BLE Scan");
     if (this.state === 'connected') {
@@ -206,9 +210,10 @@ export function parse(data) {
     const realtime = data.readUInt8(KEISER_VALUE_IDX_REALTIME);
     if (realtime === 0 || (realtime > 128 && realtime < 255)) {
       // Realtime data received
+      const hr = data.readUInt16LE(KEISER_VALUE_IDX_HR);
       const power = data.readUInt16LE(KEISER_VALUE_IDX_POWER);
       const cadence = Math.round(data.readUInt16LE(KEISER_VALUE_IDX_CADENCE) / 10);
-      return {type: 'stats', payload: {power, cadence}};
+      return {type: 'stats', payload: {power, hr, cadence}};
     }
   }
   throw new Error('unable to parse message');
